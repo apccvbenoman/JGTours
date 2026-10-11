@@ -6,6 +6,7 @@ import { SiteShell } from "@/components/site-shell"
 
 type BookingDetails = {
   userId: string | null
+  email?: string
   packageId: number | string
   tourPackage: string
   leadGuestName: string
@@ -13,8 +14,8 @@ type BookingDetails = {
   tourDate: string
   contactNumber: string
   packageSubtotal: number
-  environmentFee: number
   totalAmount: number
+  processingFee?: number
 }
 
 export default function CheckoutPage() {
@@ -37,6 +38,11 @@ export default function CheckoutPage() {
     }
   }, [])
 
+  
+    const packageSubtotal = Number(booking?.packageSubtotal || 0)
+    const processingFee = Math.round(packageSubtotal * 0.02 * 100) / 100
+    const calculatedTotalAmount = Math.round((packageSubtotal + processingFee) * 100) / 100
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!booking) return
@@ -44,12 +50,13 @@ export default function CheckoutPage() {
     toast.loading("Connecting to Paymongo Secure Checkout...")
 
     try {
-      // Send data to your new backend API
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...booking,
+          processingFee,
+          totalAmount: calculatedTotalAmount,
           origin: window.location.origin 
         })
       })
@@ -58,7 +65,6 @@ export default function CheckoutPage() {
 
       if (data.url) {
         toast.dismiss()
-        // This physically redirects the browser to Paymongo's checkout screen
         window.location.href = data.url 
       } else {
         throw new Error(data.error || "Failed to generate checkout link")
@@ -80,33 +86,50 @@ export default function CheckoutPage() {
           <div className="bg-slate-900 text-white p-8 md:w-1/3 flex flex-col justify-between">
             <div>
               <h2 className="text-xl font-bold mb-6">Order Summary</h2>
-              {booking ? <div className="space-y-4 text-sm text-slate-300">
-                <div>
-                  <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Tour Package</p>
-                  <p className="font-medium text-white">{booking.tourPackage}</p>
+              {booking ? (
+                <div className="space-y-4 text-sm text-slate-300">
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Tour Package</p>
+                    <p className="font-medium text-white">{booking.tourPackage}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Guests</p>
+                    <p className="font-medium text-white">{booking.pax} Pax</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Date</p>
+                    <p className="font-medium text-white">
+                      {new Date(`${booking.tourDate}T00:00:00`).toLocaleDateString("en-PH", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Guests</p>
-                  <p className="font-medium text-white">{booking.pax} Pax</p>
-                </div>
-                <div>
-                  <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Date</p>
-                  <p className="font-medium text-white">{new Date(`${booking.tourDate}T00:00:00`).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}</p>
-                </div>
-              </div> : <p className="text-sm text-slate-300">No booking selected.</p>}
+              ) : (
+                <p className="text-sm text-slate-300">No booking selected.</p>
+              )}
             </div>
+
             <div className="mt-8 border-t border-slate-700 pt-4 space-y-3 text-sm">
               <div className="flex items-center justify-between text-slate-300">
                 <span>Package</span>
-                <span>{booking ? `₱${booking.packageSubtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}</span>
+                <span>
+                  {booking ? `₱${Number(booking.packageSubtotal || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}
+                </span>
               </div>
               <div className="flex items-center justify-between text-slate-300">
-                <span>Environment Fee</span>
-                <span>{booking ? `₱${booking.environmentFee.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}</span>
+                <span>Processing Fee (2%)</span>
+                <span>
+                  {booking ? `₱${processingFee.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}
+                </span>
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-slate-700 text-white font-semibold">
                 <span>Total Amount</span>
-                <span className="text-xl font-bold text-[#ce9136]">{booking ? `₱${booking.totalAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}</span>
+                <span className="text-xl font-bold text-[#ce9136]">
+                  {booking ? `₱${calculatedTotalAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}
+                </span>
               </div>
               <p className="text-[11px] text-slate-400 pt-2">Bookings are non-refundable, but can be rebooked if needed.</p>
             </div>
@@ -117,7 +140,6 @@ export default function CheckoutPage() {
             <h2 className="text-2xl font-bold text-slate-900 mb-6">Payment Details</h2>
             
             <form onSubmit={handlePayment} className="space-y-5">
-              
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
                 <svg className="w-12 h-12 text-amber-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
