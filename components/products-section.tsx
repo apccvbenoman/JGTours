@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { ProductCard } from "@/components/product-card"
 import { useAuth } from "@/components/auth-provider"
-import { supabase } from "@/lib/supabase"
-
-// Import the action we created earlier
 import { getPackages } from "@/lib/actions/packages"
+import { supabase } from "@/lib/supabase"
 
 type TourPackage = {
   id: number | string
@@ -20,7 +18,7 @@ type TourPackage = {
   image: string | null
   destination_details?: string | null
   inclusions?: string | null
-  exclusions?: string | null // <-- Added exclusions type definition
+  exclusions?: string | null
 }
 
 const bookingStorageKey = "jazgot-booking"
@@ -55,7 +53,7 @@ export function ProductsSection() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin")
   const [isAuthenticating, setIsAuthenticating] = useState(false)
-  
+
   // Tour Selection
   const [selectedTour, setSelectedTour] = useState<TourPackage | null>(null)
   const [pendingTour, setPendingTour] = useState<TourPackage | null>(null)
@@ -64,14 +62,13 @@ export function ProductsSection() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [clientName, setClientName] = useState("")
-  
+
   // Booking Form Inputs
-  const [guestName, setGuestName] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
   const [pax, setPax] = useState<number | "">(1)
   const [tourDate, setTourDate] = useState("")
   const [contactNumber, setContactNumber] = useState("")
-  const [bookedDates, setBookedDates] = useState<string[]>([])
-  const [availabilityLoading, setAvailabilityLoading] = useState(false)
 
   // --- Fetch Packages on Load ---
   useEffect(() => {
@@ -87,29 +84,6 @@ export function ProductsSection() {
     }
     fetchLiveTours()
   }, [])
-
-  useEffect(() => {
-    if (!selectedTour) return
-
-    let cancelled = false
-    const loadAvailability = async () => {
-      setAvailabilityLoading(true)
-      try {
-        const response = await fetch(`/api/checkout?packageId=${encodeURIComponent(selectedTour.id)}`)
-        const data = await response.json()
-        if (!response.ok) throw new Error(data.error || "Could not load tour availability")
-        if (!cancelled) setBookedDates(data.bookedDates as string[])
-      } catch (error) {
-        console.error("Failed to load tour availability:", error)
-        if (!cancelled) toast.error("Could not load tour availability. Please try again.")
-      } finally {
-        if (!cancelled) setAvailabilityLoading(false)
-      }
-    }
-
-    loadAvailability()
-    return () => { cancelled = true }
-  }, [selectedTour])
 
   // --- DYNAMIC PRICE CALCULATION ---
   const currentPax = typeof pax === "number" && pax > 0 ? pax : 1
@@ -164,16 +138,34 @@ export function ProductsSection() {
 
   const handleBookNow = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedTour || bookedDates.includes(tourDate) || tourDate < getMinimumTourDate()) {
-      toast.error("Choose an available tour date at least 48 hours from now.")
+
+    if (!selectedTour) {
+      toast.error("Please select a tour package first.")
       return
     }
 
+    const minDate = getMinimumTourDate()
+    if (!tourDate || tourDate < minDate) {
+      toast.error("Choose an available tour date at least 48 hours from today.")
+      return
+    }
+
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim()
+    if (!firstName.trim() || !lastName.trim()) {
+      toast.error("Please enter both first name and last name.")
+      return
+    }
+
+    const customerEmail = user?.email || email || ""
+
     sessionStorage.setItem(bookingStorageKey, JSON.stringify({
       userId: user?.id ?? null,
+      email: customerEmail,
       packageId: selectedTour.id,
       tourPackage: selectedTour.title,
-      leadGuestName: guestName,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      leadGuestName: fullName,
       pax: currentPax,
       tourDate,
       contactNumber: normalizePhilippinePhone(contactNumber),
@@ -273,7 +265,7 @@ export function ProductsSection() {
         </div>
       )}
 
-      {/* 2. BOOKING MODAL WITH EXCLUSIONS */}
+      {/* 2. BOOKING MODAL */}
       {user && selectedTour && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl overflow-y-auto md:overflow-hidden max-w-5xl w-full max-h-[90vh] shadow-2xl flex flex-col md:flex-row">
@@ -317,7 +309,6 @@ export function ProductsSection() {
                   </div>
                 )}
 
-                {/* Exclusions Section added here */}
                 {selectedTour.exclusions && (
                   <div className="bg-rose-50 p-3 rounded-lg border border-rose-100">
                     <h4 className="font-bold text-rose-800 mb-2">Exclusions:</h4>
@@ -348,13 +339,29 @@ export function ProductsSection() {
                 </div>
                 
                 <form id="booking-form" onSubmit={handleBookNow} className="space-y-4 text-left">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Lead Guest Name</label>
-                    <input 
-                      type="text" required value={guestName} onChange={(e) => setGuestName(e.target.value)} 
-                      className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#ce9136] text-slate-900 outline-none" 
-                      placeholder="Juan Dela Cruz"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">First Name</label>
+                      <input 
+                        type="text" 
+                        required 
+                        value={firstName} 
+                        onChange={(e) => setFirstName(e.target.value)} 
+                        className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#ce9136] text-slate-900 outline-none" 
+                        placeholder="Juan"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Last Name</label>
+                      <input 
+                        type="text" 
+                        required 
+                        value={lastName} 
+                        onChange={(e) => setLastName(e.target.value)} 
+                        className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#ce9136] text-slate-900 outline-none" 
+                        placeholder="Dela Cruz"
+                      />
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -368,19 +375,26 @@ export function ProductsSection() {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Tour Date</label>
                       <input 
-                        type="date" required value={tourDate} onChange={(e) => setTourDate(e.target.value)} disabled={availabilityLoading}
+                        type="date" 
+                        required 
+                        min={getMinimumTourDate()} 
+                        value={tourDate} 
+                        onChange={(e) => setTourDate(e.target.value)}
                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#ce9136] text-slate-900 outline-none" 
                       />
-                      {availabilityLoading && <p className="mt-1 text-xs text-slate-500">Checking available dates...</p>}
-                      {!availabilityLoading && tourDate && bookedDates.includes(tourDate) && <p className="mt-1 text-xs text-red-600">This date is already booked.</p>}
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Contact Number</label>
                     <input 
-                      type="tel" required value={contactNumber} onChange={(e) => setContactNumber(e.target.value)}
-                      pattern="(?:\+63|0)9[0-9]{9}" maxLength={13} title="Enter a Philippine mobile number, such as 09171234567 or +639171234567."
+                      type="tel" 
+                      required 
+                      value={contactNumber} 
+                      onChange={(e) => setContactNumber(e.target.value)}
+                      pattern="(?:\+63|0)9[0-9]{9}" 
+                      maxLength={13} 
+                      title="Enter a Philippine mobile number, such as 09171234567 or +639171234567."
                       className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#ce9136] text-slate-900 outline-none" 
                       placeholder="09171234567 or +639171234567"
                     />
@@ -392,7 +406,11 @@ export function ProductsSection() {
                 <button type="button" onClick={() => setSelectedTour(null)} className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 py-3 rounded-lg font-bold transition-colors">
                   Cancel
                 </button>
-                <button type="submit" form="booking-form" disabled={availabilityLoading || bookedDates.includes(tourDate)} className="flex-1 bg-[#ce9136] hover:bg-[#b87d2b] text-white py-3 rounded-lg font-bold transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60">
+                <button 
+                  type="submit" 
+                  form="booking-form" 
+                  className="flex-1 bg-[#ce9136] hover:bg-[#b87d2b] text-white py-3 rounded-lg font-bold transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
                   Confirm & Pay
                 </button>
               </div>

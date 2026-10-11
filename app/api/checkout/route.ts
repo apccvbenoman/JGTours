@@ -12,7 +12,7 @@ const supabaseAdmin = createClient(
   }
 );
 
-const ENVIRONMENT_FEE_PER_PAX = 150;
+const PROCESSING_FEE_PERCENT = 0.02;
 
 function getMinimumBookingDate() {
   const today = new Intl.DateTimeFormat('en-CA', {
@@ -42,18 +42,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Tour package was not found' }, { status: 404 });
   }
 
-  const { data: bookings, error } = await supabaseAdmin
-    .from('bookings')
-    .select('tour_date')
-    .eq('tour_package', tourPackage.title)
-    .in('payment_status', ['pending', 'paid']);
-
-  if (error) {
-    console.error('Availability lookup error:', error);
-    return NextResponse.json({ error: 'Could not load tour availability' }, { status: 500 });
-  }
-
-  return NextResponse.json({ bookedDates: bookings.map((booking) => booking.tour_date) });
+  return NextResponse.json({ success: true, title: tourPackage.title });
 }
 
 export async function POST(request: Request) {
@@ -66,10 +55,15 @@ export async function POST(request: Request) {
       Number.isFinite(parsedTourDate.getTime()) &&
       parsedTourDate.toISOString().slice(0, 10) === body.tourDate;
 
+    // Validate first name and last name
+    const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : '';
+    const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : '';
+    const fullName = `${firstName} ${lastName}`.trim() || (typeof body.leadGuestName === 'string' ? body.leadGuestName.trim() : '');
+
     if (
       !body.packageId ||
-      typeof body.leadGuestName !== 'string' ||
-      !body.leadGuestName.trim() ||
+      !firstName ||
+      !lastName ||
       !Number.isSafeInteger(body.pax) ||
       body.pax < 1 ||
       typeof body.tourDate !== 'string' ||
@@ -94,26 +88,13 @@ export async function POST(request: Request) {
 
     const unitPrice = Number(tourPackage.price);
     const packageSubtotal = unitPrice * body.pax;
-    const environmentFee = ENVIRONMENT_FEE_PER_PAX * body.pax;
-    const totalAmount = packageSubtotal + environmentFee;
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || Number(body.totalAmount) !== totalAmount) {
+    
+    // 2% processing fee calculation (No environment fee)
+    const processingFee = Math.round(packageSubtotal * PROCESSING_FEE_PERCENT * 100) / 100;
+    const totalAmount = Math.round((packageSubtotal + processingFee) * 100) / 100;
+
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || Math.abs(Number(body.totalAmount) - totalAmount) > 0.05) {
       return NextResponse.json({ error: 'Booking amount does not match the selected package' }, { status: 400 });
-    }
-
-    const { data: existingBookings, error: availabilityError } = await supabaseAdmin
-      .from('bookings')
-      .select('id')
-      .eq('tour_package', tourPackage.title)
-      .eq('tour_date', body.tourDate)
-      .in('payment_status', ['pending', 'paid'])
-      .limit(1);
-
-    if (availabilityError) {
-      console.error('Availability validation error:', availabilityError);
-      return NextResponse.json({ error: 'Could not confirm tour availability' }, { status: 500 });
-    }
-    if (existingBookings.length) {
-      return NextResponse.json({ error: 'This tour date is already booked' }, { status: 409 });
     }
 
     let origin: string;
@@ -135,8 +116,9 @@ export async function POST(request: Request) {
       data: {
         attributes: {
           billing: {
-            name: body.leadGuestName,
-            phone: body.contactNumber
+            name: fullName,
+            phone: body.contactNumber,
+            ...(body.email ? { email: body.email } : {})
           },
           send_email_receipt: true,
           show_description: true,
@@ -155,9 +137,9 @@ export async function POST(request: Request) {
             },
             {
               currency: 'PHP',
-              amount: Math.round(ENVIRONMENT_FEE_PER_PAX * 100),
-              name: 'Environment Fee',
-              quantity: body.pax
+              amount: Math.round(processingFee * 100),
+              name: 'Processing Fee (2%)',
+              quantity: 1
             }
           ],
           payment_method_types: ['card', 'gcash', 'paymaya']
@@ -185,14 +167,14 @@ export async function POST(request: Request) {
     const checkoutUrl = paymongoData.data.attributes.checkout_url;
     const checkoutId = paymongoData.data.id;
 
-    // 3. Save the pending booking using supabaseAdmin to securely bypass RLS restrictions
+    // 3. Save the pending booking
     const { error: dbError } = await supabaseAdmin
       .from('bookings')
       .insert([
         {
-          user_id: null, // <--- Change this to null to let the customer checkout go through immediately
+          user_id: null,
           tour_package: tourPackage.title,
-          lead_guest_name: body.leadGuestName,
+          lead_guest_name: fullName,
           pax: body.pax,
           tour_date: body.tourDate,
           contact_number: body.contactNumber,
