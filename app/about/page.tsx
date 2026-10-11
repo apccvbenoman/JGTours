@@ -1,6 +1,6 @@
 import Image from "next/image"
 import type { Metadata } from "next"
-import { User, HeartHandshake, ShieldCheck } from "lucide-react"
+import { User, HeartHandshake, ShieldCheck, type LucideIcon } from "lucide-react"
 
 import { SiteShell } from "@/components/site-shell"
 
@@ -10,7 +10,13 @@ export const metadata: Metadata = {
     "Learn about Jazgot Tour Services, your local El Nido island hopping experts in Palawan, Philippines.",
 }
 
-const values = [
+interface ValueItem {
+  icon: LucideIcon
+  title: string
+  body: string
+}
+
+const values: ValueItem[] = [
   {
     icon: User,
     title: "For Our Clients",

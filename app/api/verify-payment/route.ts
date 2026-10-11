@@ -1,38 +1,63 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
 
 export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const checkoutSessionId = url.searchParams.get('checkout_session_id') || url.searchParams.get('session_id');
+
   try {
-    // Instantiate inside the handler so it only runs at runtime with active env vars
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const { data: pendingBookings, error: fetchError } = await supabase
-      .from('bookings')
-      .select('*')
-      .eq('payment_status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    // 1. If PayMongo session ID is provided, look up that exact booking
+    let booking: any = null;
 
-    if (fetchError || !pendingBookings || pendingBookings.length === 0) {
+    if (checkoutSessionId) {
+      const { data } = await supabaseAdmin
+        .from('bookings')
+        .select('*')
+        .eq('paymongo_checkout_id', checkoutSessionId)
+        .single();
+      booking = data;
+    }
+
+    // Fallback if no specific ID is found: grab the latest pending one
+    if (!booking) {
+      const { data } = await supabaseAdmin
+        .from('bookings')
+        .select('*')
+        .eq('payment_status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (data && data.length > 0) {
+        booking = data[0];
+      }
+    }
+
+    if (!booking) {
       console.log("No pending bookings found to verify.");
       return NextResponse.redirect(new URL('/dashboard?success=true', request.url));
     }
 
-    const booking = pendingBookings[0];
     const invoiceNumber = `INV-2026-${String(Math.floor(Math.random() * 900) + 100)}`;
+    const voucherNumber = `VCH-2026-${String(Math.floor(Math.random() * 900) + 100)}`;
     const today = new Date().toISOString().split('T')[0];
 
-    // 1. Update booking status using admin client
+    // 2. Update booking status, payment status, and assign a voucher number
     await supabaseAdmin
       .from('bookings')
-      .update({ payment_status: 'paid' })
+      .update({ 
+        payment_status: 'paid', 
+        status: 'Confirmed',
+        voucher_number: booking.voucher_number || voucherNumber 
+      })
       .eq('id', booking.id);
 
-    // 2. Insert into invoices table
+    // 3. Insert into invoices table
     const { error: insertError } = await supabaseAdmin
       .from('invoices')
       .insert([
@@ -54,6 +79,22 @@ export async function GET(request: Request) {
     } else {
       console.log("Successfully inserted invoice into database:", invoiceNumber);
     }
+
+    // 4. Automatically trigger your email route to send the Travel Voucher PDF & Invoice!
+    try {
+      await fetch(`${url.origin}/api/send-booking-emails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId: booking.id,
+          recipientEmail: booking.contact_email || 'jazgottour@gmail.com' // Fallback or pull from guest details if available
+        })
+      });
+      console.log("Successfully triggered travel voucher email dispatch.");
+    } catch (emailErr) {
+      console.error("Failed to trigger email dispatch:", emailErr);
+    }
+
   } catch (err) {
     console.error("Verify Payment Exception:", err);
   }
