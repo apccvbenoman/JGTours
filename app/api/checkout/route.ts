@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       !validTourDate ||
       body.tourDate < getMinimumBookingDate() ||
       typeof body.contactNumber !== 'string' ||
-      !/^(?:\+639|09)\d{9}$/.test(body.contactNumber)
+      !/^(?:\+63|63|0)?9\d{9}$/.test(body.contactNumber)
     ) {
       return NextResponse.json({ error: 'Booking details are invalid or the tour date is too soon' }, { status: 400 });
     }
@@ -110,29 +110,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Paymongo secret key is missing' }, { status: 500 });
     }
     const encodedKey = Buffer.from(`${paymongoSecret}:`).toString('base64');
+
+    const rawDigits = body.contactNumber.replace(/\D/g, "");
+    const cleanPhone = rawDigits.startsWith("63") 
+      ? rawDigits.slice(2) 
+      : rawDigits.startsWith("0") 
+      ? rawDigits.slice(1) 
+      : rawDigits;
     
     // 2. Create the Paymongo Checkout Session
+    // 1. Calculate the fee in centavos
+    const packageSubtotalCentavos = Math.round(unitPrice * body.pax * 100);
+    const processingFeeCentavos = Math.round(packageSubtotalCentavos * 0.02);
+
     const paymongoPayload = {
       data: {
         attributes: {
           billing: {
             name: fullName,
-            phone: body.contactNumber,
-            ...(body.email ? { email: body.email } : {})
+            phone: cleanPhone,
           },
           send_email_receipt: true,
           show_description: true,
-          show_line_items: true,
+          show_line_items: false, //
           
           cancel_url: `${origin}/checkout`,
           success_url: `${origin}/api/verify-payment`,
           
-          description: 'Jazgot Tour Services Booking',
+          description: `El Nido Island Hopping Tour B with Lunch (Inclusive of 2% processing fee)`,
           line_items: [
             {
               currency: 'PHP',
               amount: Math.round(unitPrice * 100),
-              name: `${tourPackage.title} (Package)`,
+              name: tourPackage.title,
               quantity: body.pax
             },
             {
