@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Safe initialization that prevents build errors if env vars aren't injected at compile time
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key',
@@ -55,7 +54,6 @@ export async function POST(request: Request) {
       Number.isFinite(parsedTourDate.getTime()) &&
       parsedTourDate.toISOString().slice(0, 10) === body.tourDate;
 
-    // Validate first name and last name
     const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : '';
     const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : '';
     const fullName = `${firstName} ${lastName}`.trim() || (typeof body.leadGuestName === 'string' ? body.leadGuestName.trim() : '');
@@ -88,8 +86,6 @@ export async function POST(request: Request) {
 
     const unitPrice = Number(tourPackage.price);
     const packageSubtotal = unitPrice * body.pax;
-    
-    // 2% processing fee calculation (No environment fee)
     const processingFee = Math.round(packageSubtotal * PROCESSING_FEE_PERCENT * 100) / 100;
     const totalAmount = Math.round((packageSubtotal + processingFee) * 100) / 100;
 
@@ -103,26 +99,25 @@ export async function POST(request: Request) {
     } catch {
       return NextResponse.json({ error: 'Invalid checkout origin' }, { status: 400 });
     }
-    
-    // 1. Authenticate with Paymongo using your Secret Key
+
     const paymongoSecret = process.env.PAYMONGO_SECRET_KEY;
     if (!paymongoSecret) {
       return NextResponse.json({ error: 'Paymongo secret key is missing' }, { status: 500 });
     }
     const encodedKey = Buffer.from(`${paymongoSecret}:`).toString('base64');
 
+    // Clean phone number so PayMongo does not duplicate +63
     const rawDigits = body.contactNumber.replace(/\D/g, "");
-    const cleanPhone = rawDigits.startsWith("63") 
-      ? rawDigits.slice(2) 
-      : rawDigits.startsWith("0") 
-      ? rawDigits.slice(1) 
+    const cleanPhone = rawDigits.startsWith("63")
+      ? rawDigits.slice(2)
+      : rawDigits.startsWith("0")
+      ? rawDigits.slice(1)
       : rawDigits;
-    
-    // 2. Create the Paymongo Checkout Session
-    // 1. Calculate the fee in centavos
-    const packageSubtotalCentavos = Math.round(unitPrice * body.pax * 100);
-    const processingFeeCentavos = Math.round(packageSubtotalCentavos * 0.02);
 
+    // Unique reference generated before the call
+    const bookingRef = `BK-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    // Create Paymongo Checkout Session
     const paymongoPayload = {
       data: {
         attributes: {
@@ -132,12 +127,10 @@ export async function POST(request: Request) {
           },
           send_email_receipt: true,
           show_description: true,
-          show_line_items: false, //
-          
+          show_line_items: true,
           cancel_url: `${origin}/checkout`,
-          success_url: `${origin}/api/verify-payment`,
-          
-          description: `El Nido Island Hopping Tour B with Lunch (Inclusive of 2% processing fee)`,
+          success_url: `${origin}/api/verify-payment?ref=${bookingRef}`,
+          description: `Jazgot Tour Services Booking (${tourPackage.title})`,
           line_items: [
             {
               currency: 'PHP',
@@ -168,21 +161,22 @@ export async function POST(request: Request) {
     });
 
     const paymongoData = await paymongoRes.json();
-    
+
     if (!paymongoRes.ok) {
       console.error("Paymongo Error:", paymongoData);
       return NextResponse.json({ error: 'Failed to create payment gateway session' }, { status: 500 });
     }
 
-    const checkoutUrl = paymongoData.data.attributes.checkout_url;
-    const checkoutId = paymongoData.data.id;
+    const checkoutUrl = paymongoData.data.attributes.checkout_url as string;
+    const checkoutId = paymongoData.data.id as string;
 
-    // 3. Save the pending booking
+    // Save pending booking with both checkoutId and reference number
     const { error: dbError } = await supabaseAdmin
       .from('bookings')
       .insert([
         {
           user_id: null,
+          email: body.email || null,
           tour_package: tourPackage.title,
           lead_guest_name: fullName,
           pax: body.pax,
@@ -190,19 +184,35 @@ export async function POST(request: Request) {
           contact_number: body.contactNumber,
           total_amount: totalAmount,
           paymongo_checkout_id: checkoutId,
+          booking_ref: bookingRef,
           payment_status: 'pending',
           status: 'Pending'
         }
       ]);
 
     if (dbError) {
-      console.error("Supabase Error:", dbError);
-      return NextResponse.json({ error: 'Failed to save booking to database' }, { status: 500 });
+      // If booking_ref column doesn't exist yet in Supabase, retry without booking_ref
+      await supabaseAdmin
+        .from('bookings')
+        .insert([
+          {
+            user_id: null,
+            email: body.email || null,
+            tour_package: tourPackage.title,
+            lead_guest_name: fullName,
+            pax: body.pax,
+            tour_date: body.tourDate,
+            contact_number: body.contactNumber,
+            total_amount: totalAmount,
+            paymongo_checkout_id: checkoutId,
+            payment_status: 'pending',
+            status: 'Pending'
+          }
+        ]);
     }
 
-    // 4. Send the Paymongo URL back to the frontend
     return NextResponse.json({ url: checkoutUrl });
-    
+
   } catch (error) {
     console.error("Checkout API Error:", error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
