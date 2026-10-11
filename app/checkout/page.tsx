@@ -12,6 +12,8 @@ type BookingDetails = {
   pax: number
   tourDate: string
   contactNumber: string
+  packageSubtotal: number
+  environmentFee: number
   totalAmount: number
 }
 
@@ -93,9 +95,20 @@ export default function CheckoutPage() {
                 </div>
               </div> : <p className="text-sm text-slate-300">No booking selected.</p>}
             </div>
-            <div className="mt-8 border-t border-slate-700 pt-4">
-              <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Total Amount</p>
-              <p className="text-3xl font-bold text-[#ce9136]">{booking ? `₱${booking.totalAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}</p>
+            <div className="mt-8 border-t border-slate-700 pt-4 space-y-3 text-sm">
+              <div className="flex items-center justify-between text-slate-300">
+                <span>Package</span>
+                <span>{booking ? `₱${booking.packageSubtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-300">
+                <span>Environment Fee</span>
+                <span>{booking ? `₱${booking.environmentFee.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}</span>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-700 text-white font-semibold">
+                <span>Total Amount</span>
+                <span className="text-xl font-bold text-[#ce9136]">{booking ? `₱${booking.totalAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "--"}</span>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-2">Bookings are non-refundable, but can be rebooked if needed.</p>
             </div>
           </div>
 

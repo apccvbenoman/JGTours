@@ -12,6 +12,8 @@ const supabaseAdmin = createClient(
   }
 );
 
+const ENVIRONMENT_FEE_PER_PAX = 150;
+
 function getMinimumBookingDate() {
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Manila',
@@ -91,7 +93,9 @@ export async function POST(request: Request) {
     }
 
     const unitPrice = Number(tourPackage.price);
-    const totalAmount = unitPrice * body.pax;
+    const packageSubtotal = unitPrice * body.pax;
+    const environmentFee = ENVIRONMENT_FEE_PER_PAX * body.pax;
+    const totalAmount = packageSubtotal + environmentFee;
     if (!Number.isFinite(unitPrice) || unitPrice <= 0 || Number(body.totalAmount) !== totalAmount) {
       return NextResponse.json({ error: 'Booking amount does not match the selected package' }, { status: 400 });
     }
@@ -145,8 +149,14 @@ export async function POST(request: Request) {
           line_items: [
             {
               currency: 'PHP',
-              amount: unitPrice * 100,
-              name: tourPackage.title,
+              amount: Math.round(unitPrice * 100),
+              name: `${tourPackage.title} (Package)`,
+              quantity: body.pax
+            },
+            {
+              currency: 'PHP',
+              amount: Math.round(ENVIRONMENT_FEE_PER_PAX * 100),
+              name: 'Environment Fee',
               quantity: body.pax
             }
           ],

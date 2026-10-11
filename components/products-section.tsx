@@ -24,6 +24,7 @@ type TourPackage = {
 }
 
 const bookingStorageKey = "jazgot-booking"
+const ENVIRONMENT_FEE_PER_PAX = 150
 
 function getMinimumTourDate() {
   const today = new Intl.DateTimeFormat("en-CA", {
@@ -113,7 +114,9 @@ export function ProductsSection() {
   // --- DYNAMIC PRICE CALCULATION ---
   const currentPax = typeof pax === "number" && pax > 0 ? pax : 1
   const basePrice = selectedTour?.price || 1350
-  const totalAmount = basePrice * currentPax
+  const packageSubtotal = basePrice * currentPax
+  const environmentFee = ENVIRONMENT_FEE_PER_PAX * currentPax
+  const totalAmount = packageSubtotal + environmentFee
 
   // --- LOGIC HANDLERS ---
   const handleTourClick = (tour: TourPackage) => {
@@ -174,6 +177,8 @@ export function ProductsSection() {
       pax: currentPax,
       tourDate,
       contactNumber: normalizePhilippinePhone(contactNumber),
+      packageSubtotal,
+      environmentFee,
       totalAmount,
     }))
     router.push("/checkout")
@@ -332,7 +337,7 @@ export function ProductsSection() {
                 <div className="mb-6 flex justify-between items-start">
                   <div>
                     <h3 className="text-2xl font-bold text-slate-900">Secure your slot</h3>
-                    <p className="text-slate-500 text-xs mt-1">Book at least 48 hours before your tour.</p>
+                    <p className="text-slate-500 text-xs mt-1">Bookings are non-refundable, but can be rebooked if needed.</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-slate-500 mb-1">Total Amount</p>
@@ -363,7 +368,7 @@ export function ProductsSection() {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Tour Date</label>
                       <input 
-                        type="date" min={getMinimumTourDate()} required value={tourDate} onChange={(e) => setTourDate(e.target.value)} disabled={availabilityLoading}
+                        type="date" required value={tourDate} onChange={(e) => setTourDate(e.target.value)} disabled={availabilityLoading}
                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#ce9136] text-slate-900 outline-none" 
                       />
                       {availabilityLoading && <p className="mt-1 text-xs text-slate-500">Checking available dates...</p>}
