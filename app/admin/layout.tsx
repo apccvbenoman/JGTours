@@ -9,6 +9,7 @@ import { Logo } from '@/components/logo';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -20,6 +21,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (!session && pathname !== '/admin/login') {
         router.push('/admin/login');
       } else {
+        if (session?.user?.email) {
+          setUserEmail(session.user.email);
+        }
         setLoading(false);
       }
     };
@@ -157,11 +161,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-slate-800">Administrator</p>
+              <p className="text-xs font-bold text-slate-800 capitalize">
+                {userEmail ? userEmail.split('@')[0] : 'User'}
+              </p>
               <p className="text-[10px] text-slate-400">Active Session</p>
             </div>
-            <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-200 text-amber-900 flex items-center justify-center font-bold text-xs shadow-xs">
-              AD
+            <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-200 text-amber-900 flex items-center justify-center font-bold text-xs shadow-xs uppercase">
+              {userEmail ? userEmail.slice(0, 2) : 'AD'}
             </div>
           </div>
         </header>

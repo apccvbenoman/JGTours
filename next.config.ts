@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'www.travelandleisure.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'ahvfnuwdglbohtxwmrfc.supabase.co',
+      },
     ],
   },
 }

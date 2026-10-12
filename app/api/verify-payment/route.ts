@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     // 1. Update booking status using admin client
     await supabaseAdmin
       .from('bookings')
-      .update({ payment_status: 'paid' })
+      .update({ payment_status: 'paid', status: 'Confirmed' })
       .eq('id', booking.id);
 
     // 2. Insert into invoices table

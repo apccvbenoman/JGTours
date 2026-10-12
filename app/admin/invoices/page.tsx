@@ -27,7 +27,7 @@ export default function InvoicesPage() {
       const { data, error } = await supabase
         .from('invoices')
         .select('*')
-        .order('date_paid', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (error) {
         console.error("Error fetching invoices:", error)
@@ -150,11 +150,10 @@ export default function InvoicesPage() {
                   <td className="p-4">
                     <button 
                       onClick={() => handleViewPDF(invoice)}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 cursor-pointer"
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium cursor-pointer"
                     >
                       View PDF
                     </button>
-                    <button className="text-slate-500 hover:text-slate-700 text-sm font-medium">Forward to Acctg</button>
                   </td>
                 </tr>
               ))

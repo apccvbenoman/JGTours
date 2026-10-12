@@ -29,6 +29,7 @@ export default function BookingsPage() {
 
   // Selected Booking for Modal
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [packageDetails, setPackageDetails] = useState<any>(null);
   const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
 
   // Success / Error Modal Popup State
@@ -54,9 +55,11 @@ export default function BookingsPage() {
     try {
       const { data } = await supabase.auth.getSession();
       const email = data?.session?.user?.email || null;
+      const role = data?.session?.user?.user_metadata?.role || null;
       setCurrentUserEmail(email);
 
-      if (email === 'admin@jazgottours.com') {
+      // Grant access to admin or staff roles; also fallback to the hard-coded admin email
+      if (role === 'admin' || role === 'staff' || email === 'admin@jazgottours.com') {
         setIsAdmin(true);
       } else {
         setIsAdmin(false);
@@ -84,6 +87,20 @@ export default function BookingsPage() {
       console.error('Error fetching bookings:', err?.message || err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenDetails = async (booking: any) => {
+    setSelectedBooking(booking);
+    setPackageDetails(null);
+    // Fetch the matching package to get inclusions/exclusions
+    if (booking.tour_package) {
+      const { data } = await supabase
+        .from('packages')
+        .select('inclusions, exclusions')
+        .eq('title', booking.tour_package)
+        .single();
+      if (data) setPackageDetails(data);
     }
   };
 
@@ -314,7 +331,7 @@ export default function BookingsPage() {
                       <td className="p-4">{getStatusBadge(b.status)}</td>
                       <td className="p-4 text-right">
                         <button
-                          onClick={() => setSelectedBooking(b)}
+                          onClick={() => handleOpenDetails(b)}
                           className="text-amber-700 hover:text-amber-900 p-1.5 rounded-lg hover:bg-amber-50 transition-colors inline-flex items-center gap-1 font-semibold cursor-pointer"
                         >
                           <FiEye size={14} />
@@ -349,7 +366,8 @@ export default function BookingsPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              {/* Lead Guest */}
               <div className="bg-slate-50/80 p-4 rounded-2xl space-y-1">
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Lead Guest</span>
                 <p className="font-bold text-slate-900 text-sm">{selectedBooking.lead_guest_name || 'Guest'}</p>
@@ -358,19 +376,72 @@ export default function BookingsPage() {
                 )}
               </div>
 
+              {/* Party Size */}
               <div className="bg-slate-50/80 p-4 rounded-2xl space-y-1">
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Party Size</span>
-                <p className="font-bold text-amber-800 text-sm">{selectedBooking.pax || selectedBooking.guests || 1}</p>
-                <p className="text-slate-500 text-[11px]">Total Pax</p>
+                <p className="font-bold text-amber-800 text-sm">{selectedBooking.pax || selectedBooking.guests || 1} Pax</p>
               </div>
 
+              {/* Contact Number */}
+              <div className="bg-slate-50/80 p-4 rounded-2xl space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Contact Number</span>
+                <p className="font-bold text-slate-900 text-sm">{selectedBooking.contact_number || 'N/A'}</p>
+              </div>
+
+              {/* Total Amount */}
+              <div className="bg-emerald-50/80 p-4 rounded-2xl space-y-1 border border-emerald-100">
+                <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">Total Amount</span>
+                <p className="font-bold text-emerald-800 text-sm">
+                  {selectedBooking.total_amount ? `₱${Number(selectedBooking.total_amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : 'N/A'}
+                </p>
+                <p className="text-[11px] text-slate-400">Payment: {selectedBooking.payment_status || 'pending'}</p>
+              </div>
+
+              {/* Tour Package */}
               <div className="bg-slate-50/80 p-4 rounded-2xl space-y-1 col-span-2">
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Tour Package</span>
                 <p className="font-bold text-slate-900 text-sm">{selectedBooking.tour_package || 'Custom Tour'}</p>
                 <p className="text-slate-500 text-[11px]">
-                  Date: {selectedBooking.tour_date || selectedBooking.travel_date ? new Date(selectedBooking.tour_date || selectedBooking.travel_date).toDateString() : 'N/A'}
+                  Tour Date: {selectedBooking.tour_date || selectedBooking.travel_date
+                    ? new Date(selectedBooking.tour_date || selectedBooking.travel_date).toDateString()
+                    : 'N/A'}
+                </p>
+                <p className="text-slate-400 text-[11px]">
+                  Booked: {selectedBooking.created_at
+                    ? new Date(selectedBooking.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+                    : 'N/A'}
                 </p>
               </div>
+
+              {/* Inclusions */}
+              {packageDetails?.inclusions && (
+                <div className="bg-amber-50/60 p-4 rounded-2xl space-y-2 col-span-2 border border-amber-100">
+                  <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider">Tour Inclusions</span>
+                  <ul className="space-y-1">
+                    {packageDetails.inclusions.split('\n').filter(Boolean).map((item: string, i: number) => (
+                      <li key={i} className="text-[11px] text-slate-700 flex items-start gap-1.5">
+                        <span className="text-amber-500 mt-0.5">✓</span>
+                        <span>{item.trim()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Exclusions */}
+              {packageDetails?.exclusions && (
+                <div className="bg-rose-50/60 p-4 rounded-2xl space-y-2 col-span-2 border border-rose-100">
+                  <span className="text-[10px] uppercase font-bold text-rose-600 tracking-wider">Exclusions</span>
+                  <ul className="space-y-1">
+                    {packageDetails.exclusions.split('\n').filter(Boolean).map((item: string, i: number) => (
+                      <li key={i} className="text-[11px] text-slate-700 flex items-start gap-1.5">
+                        <span className="text-rose-400 mt-0.5">✗</span>
+                        <span>{item.trim()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Current Status Badge inside modal */}
