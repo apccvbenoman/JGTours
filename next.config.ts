@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       allowedOrigins: [
         "localhost:3000",
+        "*.vercel.app",
         "psychic-palm-tree-wrg676g9597vcvg7r-3000.app.github.dev",
         "*.app.github.dev"
       ]
