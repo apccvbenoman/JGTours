@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { getPackages, addPackage, updatePackage, deletePackage } from '@/lib/actions/packages'
+import { getPackages, addPackage, updatePackage, deletePackage } from '@/lib/actions/packages';
+import { getActiveRole } from '@/lib/agent-service';
 
 type TourPackage = {
   id: number
