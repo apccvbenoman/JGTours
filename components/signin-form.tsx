@@ -23,28 +23,58 @@ export function SignInForm() {
     const password = String(formData.get("password"))
     const fullName = String(formData.get("name") ?? "")
 
-    const result = authMode === "signin"
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName } },
-        })
-
-    setIsSubmitting(false)
-
-    if (result.error) {
-      toast.error(result.error.message)
+    if (authMode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      setIsSubmitting(false)
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      toast.success("Signed in successfully!")
+      router.push("/")
       return
     }
 
-    if (authMode === "signup" && !result.data.session) {
-      toast.success("Account created. Check your email to confirm your address, then sign in.")
+    // --- SIGN UP FLOW ---
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName } },
+    })
+
+    if (error) {
+      setIsSubmitting(false)
+      toast.error(error.message)
+      return
+    }
+
+    // Try to insert profile row — if profiles table doesn't exist yet, we warn but don't block
+    if (data?.user) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({
+          id: data.user.id,
+          full_name: fullName,
+          email,
+          role: "client",
+        })
+
+      if (profileError) {
+        // Profile insert failed (e.g. table missing) — auth was still created, inform user
+        console.warn("Profile insert warning:", profileError.message)
+      }
+    }
+
+    setIsSubmitting(false)
+
+    if (!data.session) {
+      // Email confirmation required
+      toast.success("Account created! Check your email to confirm your address, then sign in.")
       setAuthMode("signin")
       return
     }
 
-    toast.success(authMode === "signin" ? "Signed in successfully!" : "Account created successfully!")
+    toast.success("Account created successfully!")
     router.push("/")
   }
 
@@ -56,8 +86,8 @@ export function SignInForm() {
           {authMode === "signin" ? "Welcome back" : "Create an Account"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {authMode === "signin" 
-            ? "Sign in to manage your bookings and tours." 
+          {authMode === "signin"
+            ? "Sign in to manage your bookings and tours."
             : "Sign up to start booking your unforgettable memories."}
         </p>
       </div>
@@ -73,24 +103,24 @@ export function SignInForm() {
               <Input id="name" name="name" type="text" placeholder="Juan Dela Cruz" required />
             </Field>
           )}
-          
+
           <Field>
             <FieldLabel htmlFor="email">Email</FieldLabel>
             <Input id="email" name="email" type="email" placeholder="you@example.com" required />
           </Field>
-          
+
           <Field>
             <FieldLabel htmlFor="password">Password</FieldLabel>
             <Input id="password" name="password" type="password" placeholder="••••••••" required />
           </Field>
-          
+
           <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
             {isSubmitting ? "Please wait..." : authMode === "signin" ? "Sign In" : "Sign Up"}
           </Button>
-          
+
           <FieldDescription className="text-center mt-4">
             {authMode === "signin" ? "Don't have an account? " : "Already have an account? "}
-            <button 
+            <button
               type="button"
               onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}
               className="font-medium text-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
